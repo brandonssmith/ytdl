@@ -1,11 +1,11 @@
 # YouTube Video Downloader GUI
 
-A simple and modern graphical user interface for downloading YouTube videos using yt-dlp.
+A simple and modern graphical user interface for downloading YouTube videos using yt-dlp in Windows. I suppose that it could work in another OS but I specifically built it for the Windows compatible command line app.
 
 ## Requirements
 
 - Python 3.7 or higher
-- yt-dlp.exe (included in this directory)
+- yt-dlp.exe - you can find that at the actual yt-dlp page here: https://github.com/yt-dlp/yt-dlp
 - Required Python packages (listed in requirements.txt)
 
 ## Setup
