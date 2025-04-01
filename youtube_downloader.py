@@ -4,14 +4,27 @@ import os
 from PIL import Image, ImageTk
 import threading
 import tkinter as tk
-from tkinter import filedialog
+from tkinter import filedialog, messagebox
 import requests
 import json
 import io
+import sys
 
 class YouTubeDownloader(ctk.CTk):
     def __init__(self):
         super().__init__()
+
+        # Get the directory where the script is located
+        self.script_dir = os.path.dirname(os.path.abspath(__file__))
+        self.ytdlp_path = os.path.join(self.script_dir, "yt-dlp.exe")
+
+        # Check if yt-dlp.exe exists
+        if not os.path.exists(self.ytdlp_path):
+            messagebox.showerror(
+                "Error",
+                "yt-dlp.exe not found! Please download it from https://github.com/yt-dlp/yt-dlp and place it in the same directory as this script."
+            )
+            sys.exit(1)
 
         # Configure window
         self.title("YouTube Video Downloader")
@@ -130,24 +143,24 @@ class YouTubeDownloader(ctk.CTk):
 
     def update_preview(self, url):
         try:
-            # Get video info using yt-dlp
-            command = [
-                "yt-dlp.exe",
+            # Get video info for thumbnail and title
+            info_command = [
+                self.ytdlp_path,
                 "--dump-json",
                 url
             ]
             
-            process = subprocess.Popen(
-                command,
+            info_process = subprocess.Popen(
+                info_command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 universal_newlines=True
             )
             
-            output, error = process.communicate()
+            info_output, info_error = info_process.communicate()
             
-            if process.returncode == 0:
-                video_info = json.loads(output)
+            if info_process.returncode == 0:
+                video_info = json.loads(info_output)
                 thumbnail_url = video_info.get('thumbnail')
                 
                 if thumbnail_url:
@@ -172,17 +185,24 @@ class YouTubeDownloader(ctk.CTk):
                         title = video_info.get('title', '')
                         if title:
                             self.preview_label.configure(text=title)
-            else:
-                self.preview_label.configure(text="Could not load preview")
                 
         except Exception as e:
             self.preview_label.configure(text=f"Preview error: {str(e)}")
+            print(f"Error details: {str(e)}")  # For debugging
 
     def start_download(self):
         url = self.url_entry.get()
         if not url:
             self.progress_label.configure(text="Please enter a URL")
             return
+
+        # Verify download location exists
+        if not os.path.exists(self.download_location):
+            try:
+                os.makedirs(self.download_location)
+            except Exception as e:
+                messagebox.showerror("Error", f"Could not create download directory: {str(e)}")
+                return
 
         # Disable the download button while downloading
         self.download_button.configure(state="disabled")
@@ -197,10 +217,15 @@ class YouTubeDownloader(ctk.CTk):
     def download_video(self, url):
         try:
             format_option = self.format_var.get()
+            
+            # Ensure the download location path is properly formatted
+            output_template = os.path.join(self.download_location, "%(title)s.%(ext)s")
+            
             command = [
-                "yt-dlp.exe",
+                self.ytdlp_path,
                 "-f", format_option,
-                "-o", os.path.join(self.download_location, "%(title)s.%(ext)s"),
+                "-o", output_template,
+                "--no-check-certificates",  # Add this to handle some SSL issues
                 url
             ]
 
@@ -220,9 +245,10 @@ class YouTubeDownloader(ctk.CTk):
                     self.update()
 
             if process.returncode == 0:
-                self.progress_label.configure(text="Download completed successfully!")
+                self.progress_label.configure(text=f"Download completed successfully! Saved to: {self.download_location}")
             else:
-                self.progress_label.configure(text="Download failed. Please check the URL and try again.")
+                error_output = process.stderr.read()
+                self.progress_label.configure(text=f"Download failed: {error_output}")
 
         except Exception as e:
             self.progress_label.configure(text=f"Error: {str(e)}")
