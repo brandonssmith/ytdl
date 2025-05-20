@@ -69,25 +69,9 @@ class YouTubeDownloader(ctk.CTk):
         self.preview_image = ctk.CTkLabel(self.preview_frame, text="")
         self.preview_image.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
 
-        # Format Selection
-        self.format_frame = ctk.CTkFrame(self.main_frame)
-        self.format_frame.grid(row=3, column=0, pady=10, padx=20, sticky="ew")
-        self.format_frame.grid_columnconfigure(0, weight=1)
-
-        self.format_label = ctk.CTkLabel(self.format_frame, text="Format:")
-        self.format_label.grid(row=0, column=0, padx=5, pady=5, sticky="w")
-
-        self.format_var = ctk.StringVar(value="best")
-        self.format_menu = ctk.CTkOptionMenu(
-            self.format_frame,
-            values=["best", "bestvideo+bestaudio", "bestvideo", "bestaudio"],
-            variable=self.format_var
-        )
-        self.format_menu.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
-
         # Download Location
         self.location_frame = ctk.CTkFrame(self.main_frame)
-        self.location_frame.grid(row=4, column=0, pady=10, padx=20, sticky="ew")
+        self.location_frame.grid(row=3, column=0, pady=10, padx=20, sticky="ew")
         self.location_frame.grid_columnconfigure(1, weight=1)
 
         self.location_label = ctk.CTkLabel(self.location_frame, text="Save Location:")
@@ -109,11 +93,11 @@ class YouTubeDownloader(ctk.CTk):
             text="Download",
             command=self.start_download
         )
-        self.download_button.grid(row=5, column=0, pady=20)
+        self.download_button.grid(row=4, column=0, pady=20)
 
         # Progress Frame
         self.progress_frame = ctk.CTkFrame(self.main_frame)
-        self.progress_frame.grid(row=6, column=0, pady=10, padx=20, sticky="ew")
+        self.progress_frame.grid(row=5, column=0, pady=10, padx=20, sticky="ew")
         self.progress_frame.grid_columnconfigure(0, weight=1)
 
         self.progress_label = ctk.CTkLabel(self.progress_frame, text="")
@@ -216,14 +200,11 @@ class YouTubeDownloader(ctk.CTk):
 
     def download_video(self, url):
         try:
-            format_option = self.format_var.get()
-            
             # Ensure the download location path is properly formatted
             output_template = os.path.join(self.download_location, "%(title)s.%(ext)s")
             
             command = [
                 self.ytdlp_path,
-                "-f", format_option,
                 "-o", output_template,
                 "--no-check-certificates",  # Add this to handle some SSL issues
                 url
