@@ -9,6 +9,9 @@ import requests
 import json
 import io
 import sys
+import re
+import zipfile
+import tempfile
 
 class YouTubeDownloader(ctk.CTk):
     def __init__(self):
@@ -27,7 +30,7 @@ class YouTubeDownloader(ctk.CTk):
             sys.exit(1)
 
         # Configure window
-        self.title("YouTube Video Downloader")
+        self.title("yt_downloader")
         self.geometry("800x600")  # Increased window size
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
@@ -40,14 +43,32 @@ class YouTubeDownloader(ctk.CTk):
         # Title
         self.title_label = ctk.CTkLabel(
             self.main_frame,
-            text="YouTube Video Downloader",
+            text="yt_downloader",
             font=("Helvetica", 24, "bold")
         )
         self.title_label.grid(row=0, column=0, pady=20)
 
+        # Update Frame
+        self.update_frame = ctk.CTkFrame(self.main_frame)
+        self.update_frame.grid(row=1, column=0, pady=10, padx=20, sticky="ew")
+        self.update_frame.grid_columnconfigure(1, weight=1)
+
+        self.update_label = ctk.CTkLabel(self.update_frame, text="yt-dlp Status:")
+        self.update_label.grid(row=0, column=0, padx=5, pady=5, sticky="w")
+
+        self.update_button = ctk.CTkButton(
+            self.update_frame,
+            text="Check for Updates",
+            command=self.check_for_updates
+        )
+        self.update_button.grid(row=0, column=1, padx=5, pady=5)
+
+        self.status_label = ctk.CTkLabel(self.update_frame, text="")
+        self.status_label.grid(row=0, column=2, padx=5, pady=5, sticky="w")
+
         # URL Entry
         self.url_frame = ctk.CTkFrame(self.main_frame)
-        self.url_frame.grid(row=1, column=0, pady=10, padx=20, sticky="ew")
+        self.url_frame.grid(row=2, column=0, pady=10, padx=20, sticky="ew")
         self.url_frame.grid_columnconfigure(1, weight=1)
 
         self.url_label = ctk.CTkLabel(self.url_frame, text="Video URL:")
@@ -59,7 +80,7 @@ class YouTubeDownloader(ctk.CTk):
 
         # Preview Frame
         self.preview_frame = ctk.CTkFrame(self.main_frame)
-        self.preview_frame.grid(row=2, column=0, pady=10, padx=20, sticky="nsew")
+        self.preview_frame.grid(row=3, column=0, pady=10, padx=20, sticky="nsew")
         self.preview_frame.grid_columnconfigure(0, weight=1)
         self.preview_frame.grid_rowconfigure(0, weight=1)
 
@@ -71,7 +92,7 @@ class YouTubeDownloader(ctk.CTk):
 
         # Download Location
         self.location_frame = ctk.CTkFrame(self.main_frame)
-        self.location_frame.grid(row=3, column=0, pady=10, padx=20, sticky="ew")
+        self.location_frame.grid(row=4, column=0, pady=10, padx=20, sticky="ew")
         self.location_frame.grid_columnconfigure(1, weight=1)
 
         self.location_label = ctk.CTkLabel(self.location_frame, text="Save Location:")
@@ -93,11 +114,11 @@ class YouTubeDownloader(ctk.CTk):
             text="Download",
             command=self.start_download
         )
-        self.download_button.grid(row=4, column=0, pady=20)
+        self.download_button.grid(row=5, column=0, pady=20)
 
         # Progress Frame
         self.progress_frame = ctk.CTkFrame(self.main_frame)
-        self.progress_frame.grid(row=5, column=0, pady=10, padx=20, sticky="ew")
+        self.progress_frame.grid(row=6, column=0, pady=10, padx=20, sticky="ew")
         self.progress_frame.grid_columnconfigure(0, weight=1)
 
         self.progress_label = ctk.CTkLabel(self.progress_frame, text="")
@@ -110,6 +131,123 @@ class YouTubeDownloader(ctk.CTk):
         # Set default download location
         self.download_location = os.path.expanduser("~/Downloads")
         self.location_entry.insert(0, self.download_location)
+
+        # Check current version on startup
+        self.check_current_version()
+
+    def check_current_version(self):
+        """Check the current version of yt-dlp"""
+        try:
+            result = subprocess.run([self.ytdlp_path, "--version"], 
+                                  capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                current_version = result.stdout.strip()
+                self.status_label.configure(text=f"Current: {current_version}")
+            else:
+                self.status_label.configure(text="Version check failed")
+        except Exception as e:
+            self.status_label.configure(text="Version check failed")
+
+    def check_for_updates(self):
+        """Check for updates and upgrade yt-dlp if needed"""
+        self.update_button.configure(state="disabled")
+        self.status_label.configure(text="Checking for updates...")
+        
+        thread = threading.Thread(target=self.update_ytdlp)
+        thread.daemon = True
+        thread.start()
+
+    def update_ytdlp(self):
+        """Update yt-dlp to the latest version"""
+        try:
+            # Get latest release info from GitHub
+            api_url = "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest"
+            response = requests.get(api_url, timeout=10)
+            
+            if response.status_code != 200:
+                self.status_label.configure(text="Failed to check for updates")
+                return
+
+            release_info = response.json()
+            latest_version = release_info['tag_name']
+            
+            # Check if we need to update
+            result = subprocess.run([self.ytdlp_path, "--version"], 
+                                  capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                current_version = result.stdout.strip()
+                if current_version == latest_version:
+                    self.status_label.configure(text=f"Already up to date: {current_version}")
+                    return
+
+            # Find Windows executable asset
+            windows_asset = None
+            for asset in release_info['assets']:
+                if asset['name'] == 'yt-dlp.exe':
+                    windows_asset = asset
+                    break
+
+            if not windows_asset:
+                self.status_label.configure(text="Windows executable not found")
+                return
+
+            # Download and update
+            self.status_label.configure(text="Downloading update...")
+            
+            # Download the new executable
+            download_url = windows_asset['browser_download_url']
+            response = requests.get(download_url, timeout=30)
+            
+            if response.status_code != 200:
+                self.status_label.configure(text="Failed to download update")
+                return
+
+            # Create backup of current executable
+            backup_path = self.ytdlp_path + ".backup"
+            if os.path.exists(self.ytdlp_path):
+                os.rename(self.ytdlp_path, backup_path)
+
+            # Write new executable
+            with open(self.ytdlp_path, 'wb') as f:
+                f.write(response.content)
+
+            # Make executable (for Unix-like systems, though we're on Windows)
+            os.chmod(self.ytdlp_path, 0o755)
+
+            # Verify the new executable works
+            result = subprocess.run([self.ytdlp_path, "--version"], 
+                                  capture_output=True, text=True, timeout=10)
+            
+            if result.returncode == 0:
+                new_version = result.stdout.strip()
+                self.status_label.configure(text=f"Updated to: {new_version}")
+                
+                # Remove backup if update was successful
+                if os.path.exists(backup_path):
+                    os.remove(backup_path)
+                    
+                messagebox.showinfo("Update Complete", 
+                                  f"yt-dlp has been successfully updated to version {new_version}")
+            else:
+                # Restore backup if update failed
+                if os.path.exists(backup_path):
+                    os.rename(backup_path, self.ytdlp_path)
+                self.status_label.configure(text="Update failed, restored backup")
+
+        except Exception as e:
+            self.status_label.configure(text=f"Update error: {str(e)}")
+            # Try to restore backup if it exists
+            backup_path = self.ytdlp_path + ".backup"
+            if os.path.exists(backup_path):
+                try:
+                    if os.path.exists(self.ytdlp_path):
+                        os.remove(self.ytdlp_path)
+                    os.rename(backup_path, self.ytdlp_path)
+                    self.status_label.configure(text="Update failed, restored backup")
+                except:
+                    self.status_label.configure(text="Update failed, backup restoration failed")
+        finally:
+            self.update_button.configure(state="normal")
 
     def browse_location(self):
         folder = filedialog.askdirectory(initialdir=self.download_location)
